@@ -1,5 +1,5 @@
-FROM centos:7
-MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
+FROM Ununtu 18 lts
+MAINTAINER Maksym Savenok
 
 # Suporting software versions
 ARG IREDMAIL_VERSION=1.0
@@ -8,21 +8,28 @@ ARG GOSU_VERSION=1.11
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
 ARG HOSTNAME=HOSTNAME
+ENV SOGO_WORKERS=2
+ENV TZ=Etc/UTC
 
 ### Installation
 WORKDIR /opt/iredmail
 ADD static_files/opt/iredmail /opt/iredmail
 
 # All-in-one installation
-RUN yum install -y mariadb-server openssl \
+RUN apt install -y mariadb-server openssl \
     && curl -o /usr/bin/gosu -SL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-amd64" \
     && chmod +x /usr/bin/gosu \
+    && sed s/$(hostname)/$HOSTNAME.$DOMAIN/ /etc/hosts > /tmp/hosts_ \
+    && cat /tmp/hosts_ > /etc/hosts \
+    && rm /tmp/hosts_ \
+    && echo $HOSTNAME > /etc/hostname \
     # Start temporary MariaDB server
     && mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
     && chown mysql:mysql /var/lib/mysql -R \
     && mysqld_safe & while ! mysqladmin ping --silent; do sleep 1; done \
     && echo "SELECT 1;"  | mysql \
     && ps -ef \
+    && service mysql start \
     # Download iRedMail
     && curl -k -q https://codeload.github.com/iredmail/iRedMail/tar.gz/"${IREDMAIL_VERSION}" | \
     tar xvz --strip-components=1 \
@@ -40,11 +47,13 @@ RUN yum install -y mariadb-server openssl \
        AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
        AUTO_CLEANUP_RESTART_POSTFIX=n \
        bash iRedMail.sh \
-    && yum install -y supervisor \
+    && apt-get --allow-unauthenticated autoremove -y -q \
+    && apt-get --allow-unauthenticated clean -y -q
+    && apt-get install -y supervisor \
     # Remove all dependencies and all caches
     && mkdir dumps \
     && for d in amavisd iredadmin iredapd roundcubemail sogo vmail mysql; do mysqldump $d | gzip -c > dumps/${d}.sql.gz; done \
-    && yum clean all \
+    && apt-get clean all \
     && find /var/cache/yum/ -type f -exec rm -f {} \; \
     && rm /var/lib/mysql -rf \
     && rm -rf /var/lib/clamav/* \
@@ -68,11 +77,15 @@ ADD static_files /
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["supervisord"]
 
+### Purge some packets and save disk space
+RUN apt-get purge -y -q dialog apt-utils augeas-tools \
+    && apt-get autoremove -y -q \
+    && apt-get clean -y -q \
+    && rm -rf /var/lib/apt/lists/*
+
 # Open Ports:
 # Apache: 80/tcp, 443/tcp Postfix: 25/tcp, 587/tcp
 # Dovecot: 110/tcp, 143/tcp, 993/tcp, 995/tcp
 EXPOSE 80 443 25 587 110 143 993 995
 
 # Default values changable at startup
-ENV SOGO_WORKERS=2
-ENV TZ=Etc/UTC
