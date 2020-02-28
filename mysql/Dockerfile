@@ -16,7 +16,7 @@ WORKDIR /opt/iredmail
 ADD static_files/opt/iredmail /opt/iredmail
 
 # All-in-one installation
-RUN apt install -y mariadb-server openssl \
+RUN apt-get install -y mariadb-server openssl \
     && curl -o /usr/bin/gosu -SL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-amd64" \
     && chmod +x /usr/bin/gosu \
     && sed s/$(hostname)/$HOSTNAME.$DOMAIN/ /etc/hosts > /tmp/hosts_ \
